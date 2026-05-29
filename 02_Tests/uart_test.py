@@ -7,8 +7,8 @@ import time
 
 class SetServoPosition(metaclass=VESCMessage):
     """Set servo position (0.0 = full left, 1.0 = full right)."""
-    id = 58
-    fields = [('servo_pos', 'h', 1000)]  # int16 / 1000, VESC erwartet kein float32
+    id = 12  # COMM_SET_SERVO_POS (datatypes.h), verified for VESC fw 7.0 / HW 410
+    fields = [('servo_pos', 'h', 1000)]  # int16 / 1000
 
 
 def parse_packet(buf):
@@ -61,9 +61,10 @@ rx_buffer = bytearray()
 try:
     while True:
         # Senden
-        duty_cycle = 5
+        duty_cycle = 10
+        #serial_port.write(pyvesc.encode(pyvesc.messages.SetRPM(1000)))   # 10000 = 10 %
         serial_port.write(pyvesc.encode(pyvesc.messages.SetDutyCycle(duty_cycle*1000)))   # 10000 = 10 %
-        #serial_port.write(pyvesc.encode(SetServoPosition(0.9)))                 # 0.0 = links, 0.5 = Mitte, 1.0 = rechts
+        serial_port.write(pyvesc.encode(SetServoPosition(0.5)))                 # 0.0 = links, 0.5 = Mitte, 1.0 = rechts
         serial_port.write(pyvesc.encode_request(pyvesc.messages.GetValues()))
 
         # Empfangen
