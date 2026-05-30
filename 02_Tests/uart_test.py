@@ -3,6 +3,7 @@ from pyvesc.messages.base import VESCMessage
 import serial
 import struct
 import time
+import select
 
 
 class SetServoPosition(metaclass=VESCMessage):
@@ -55,19 +56,67 @@ def parse_get_values(payload):
     return v
 
 
-serial_port = serial.Serial('/dev/ttyS2', 115200, timeout=0.1)
+# --- DualShock 4 via /dev/hidraw0 (hid-generic, no hid-sony driver needed) ---
+# USB input report layout (report ID = 0x01 is byte 0):
+#   [0]  report ID (0x01)
+#   [1]  LX  — L3 horizontal, 0-255, center=128
+#   [2]  LY  — L3 vertical,   0-255, center=128
+#   [3]  RX  — R3 horizontal
+#   [4]  RY  — R3 vertical
+#   [5]  dpad (bits 0-3) | square(4) | cross(5) | circle(6) | triangle(7)
+#   [6]  L1(0) | R1(1) | L2(2) | R2(3) | share(4) | options(5) | L3(6) | R3(7)
+#   [7]  PS(0) | touchpad(1)
+#   [8]  L2 analog  0-255
+#   [9]  R2 analog  0-255  ← throttle
+
+HIDRAW_DEV   = '/dev/hidraw0'
+REPORT_LEN   = 64
+
+BTN_OPTIONS  = 0x20   # byte [6], bit 5
+BTN_L1       = 0x01   # byte [6], bit 0
+BTN_R1       = 0x02   # byte [6], bit 1
+
+hidraw = open(HIDRAW_DEV, 'rb', buffering=0)
+print("DualShock 4 connected via hidraw.")
+
+# Safety enable: press OPTIONS button before the car responds to any input
+print("Press OPTIONS button to enable...")
+while True:
+    report = hidraw.read(REPORT_LEN)
+    if len(report) >= 10 and (report[6] & BTN_OPTIONS):
+        break
+print("Enabled!  R2 = throttle (0-100%)  |  L3 left/right = steering  |  Ctrl+C = stop")
+
+# --- Init UART ---
+serial_port = serial.Serial('/dev/ttyS2', 115200, timeout=0)
 rx_buffer = bytearray()
+
+duty_cycle = 0    # 0-100 (%)
+servo_pos  = 0.5  # 0.0 (full left) - 1.0 (full right), 0.5 = center
 
 try:
     while True:
-        # Senden
-        duty_cycle = 10
-        #serial_port.write(pyvesc.encode(pyvesc.messages.SetRPM(1000)))   # 10000 = 10 %
-        serial_port.write(pyvesc.encode(pyvesc.messages.SetDutyCycle(duty_cycle*1000)))   # 10000 = 10 %
-        serial_port.write(pyvesc.encode(SetServoPosition(0.5)))                 # 0.0 = links, 0.5 = Mitte, 1.0 = rechts
+        # Drain ALL queued HID reports, keep only the latest one to avoid lag
+        latest = None
+        while True:
+            r, _, _ = select.select([hidraw], [], [], 0)
+            if not r:
+                break
+            data = hidraw.read(REPORT_LEN)
+            if len(data) >= 10:
+                latest = data
+        if latest is not None:
+            # R2 analog [9]: 0-255 → duty_cycle 0-100
+            duty_cycle = int(latest[9] / 255 * 100)
+            # L3 horizontal [1]: 0-255, center=128 → servo_pos 0.0-1.0
+            servo_pos = latest[1] / 255
+
+        # Send VESC commands
+        serial_port.write(pyvesc.encode(pyvesc.messages.SetDutyCycle(duty_cycle * 1000)))
+        serial_port.write(pyvesc.encode(SetServoPosition(servo_pos)))
         serial_port.write(pyvesc.encode_request(pyvesc.messages.GetValues()))
 
-        # Empfangen
+        # Receive telemetry
         data = serial_port.read(512)
         if data:
             rx_buffer.extend(data)
@@ -77,22 +126,26 @@ try:
             rx_buffer = rx_buffer[consumed:]
             v = parse_get_values(payload)
             if v:
-                print(f"\nRPM:        {v['rpm']}")
-                print(f"Ubat:       {v['v_in']:.2f} V")
-                print(f"I_motor:    {v['avg_motor_current']:.2f} A")
-                print(f"I_input:    {v['avg_input_current']:.2f} A")
-                print(f"Duty Cycle: {v['duty_cycle_now']:.3f}")
-                print(f"Temp FET:   {v['temp_fet']:.1f} °C")
-                print(f"Temp Motor: {v['temp_motor']:.1f} °C")
-                print(f"Fault Code: {v['fault_code']}")
+                print(
+                    f"Duty: {duty_cycle:3d}%  "
+                    f"Servo: {servo_pos:.2f}  "
+                    f"RPM: {v['rpm']:6d}  "
+                    f"Ubat: {v['v_in']:.2f} V  "
+                    f"I_motor: {v['avg_motor_current']:.2f} A  "
+                    f"Fault: {v['fault_code']}"
+                )
 
         if len(rx_buffer) > 1024:
             rx_buffer.clear()
 
-        time.sleep(0.1)
+        time.sleep(0.01)  # 20 Hz control loop
 
-except:
-    print("Stop")
-    duty_cycle = 0
-    serial_port.write(pyvesc.encode(pyvesc.messages.SetDutyCycle(duty_cycle*1000)))   # 10000 = 10 %
+except KeyboardInterrupt:
+    pass
+finally:
+    print("\nStopping — duty=0, servo=center...")
+    serial_port.write(pyvesc.encode(pyvesc.messages.SetDutyCycle(0)))
+    serial_port.write(pyvesc.encode(SetServoPosition(0.5)))
     serial_port.close()
+    hidraw.close()
+    print("Done.")
