@@ -12,6 +12,10 @@ A 5-week independent study project exploring GPS/IMU sensor fusion for precise l
 
 ## Platform
 
+![Full vehicle](01_Documents/01_Progress_Report_01/Media/Car_whole_view.jpeg)
+![Rock5C compute board](01_Documents/01_Progress_Report_01/Media/Car_Rock5C_Closeup.jpeg)
+![MPU-6050 IMU](01_Documents/01_Progress_Report_01/Media/Car_IMU_Closeup.jpeg)
+
 **Compute**: Radxa Rock5C (RK3588S)
 
 **Robot**: 4-wheeled RC car frame
@@ -25,6 +29,13 @@ A 5-week independent study project exploring GPS/IMU sensor fusion for precise l
 |--------|-----------|------|
 | u-blox 7 USB GPS dongle | USB | Absolute position (GNSS) |
 | MPU-6050 | I2C | Linear acceleration + angular velocity |
+
+## Motor Controller (VESC)
+
+The BLDC motor and steering servo are controlled by a VESC motor controller, configured via [VESC Tool](https://vesc-project.com/) — an open-source GUI application that connects over USB or UART. Key settings include motor type (BLDC), current limits, and servo output range.
+
+![VESC Tool Start Screen](01_Documents/01_Progress_Report_01/Media/VESC_Tool_Start_Screen.png)
+![VESC Tool General Settings](01_Documents/01_Progress_Report_01/Media/VESC_Tool_General_Settings_Screen.png)
 
 ## Software Stack
 
