@@ -25,10 +25,16 @@ A 5-week independent study project exploring GPS/IMU sensor fusion for precise l
 
 ## Sensors
 
-| Sensor | Interface | Role |
-|--------|-----------|------|
-| u-blox 7 USB GPS dongle | USB | Absolute position (GNSS) |
-| MPU-6050 | I2C | Linear acceleration + angular velocity |
+| Sensor | Interface | Role | Wiring |
+|--------|-----------|------|------|
+| u-blox 7 USB GPS dongle | USB | Absolute position (GNSS) | USB port |
+| MPU-6050 | I2C8 | Linear acceleration + angular velocity | SDA (Pin3) + SCL (Pin5) |
+
+## Actuators
+| Component | Interface | Role | Wiring |
+|--------|-----------|------|------|
+VESC | UART2 | Motor control | Pin8 (TX) + Pin10 (RX) |
+Steering Servo | PWM | Steering | Connected to VESC PWM output pins |
 
 ## Motor Controller (VESC)
 
@@ -60,13 +66,86 @@ gps_autonomous_robot/
 ## Status
 
 - [x] Hardware platform selected
-- [ ] Hardware assembly
+- [x] Hardware assembly
 - [ ] ROS2 environment setup on Rock5C
 - [ ] GPS driver integration & testing
 - [ ] IMU driver integration & testing
 - [ ] EKF sensor fusion tuning
 - [ ] Trajectory controller implementation
 - [ ] Field testing
+
+# Hardware Setup
+![Rock5C GPIO Pinout](01_Documents/00_Media_General/Rock5C_GPIO_Pinout.png)
+
+# Software Setup
+## Activating hardware overlays
+I2C8 and UART2 have to be activated with rsetup 
+
+## Add user to group to access serial port
+sudo usermod -aG dialout radxa
+
+## Allow reading controller data
+The PS4 controller is accessed via `/dev/hidraw0`. By default only root can open it, so a udev rule is needed:
+
+```bash
+sudo tee /etc/udev/rules.d/99-hidraw-plugdev.rules <<'EOF'
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", GROUP="plugdev", MODE="0660"
+EOF
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+Replug the controller afterwards. The `radxa` user is already in `plugdev`, so no further group changes are needed.
+
+## Fix missing PyCRC dependency for pyvesc
+The `pyvesc` package requires a `PyCRC` library that is no longer available on PyPI (the name was taken over by an unrelated package). A compatibility shim must be created manually:
+
+```bash
+mkdir -p ~/.local/lib/python3.11/site-packages/PyCRC
+```
+
+Create `~/.local/lib/python3.11/site-packages/PyCRC/__init__.py` (empty) and `CRCCCITT.py` implementing CRC-CCITT (XModem, poly=0x1021, init=0x0000).
+
+## ROS2 Humble Installation (pre-built archive for Rock5C)
+
+The following steps apply when using the pre-built `ros2_humble.tar.gz` archive (built for the `radxa` user on Rock5C). A standard `sudo apt install ros-humble-*` will not work on this board.
+
+**1. Extract to the correct location**
+
+The archive contains hardcoded paths for `/home/radxa/ros2_humble`. Extract it there:
+
+```bash
+sudo tar -xzf /path/to/ros2_humble.tar.gz -C /home/radxa/
+```
+
+Do **not** extract to `/home/` directly — the Python egg-link files will point to the wrong paths and ROS2 will fail to start.
+
+**2. Install missing system libraries**
+
+```bash
+sudo apt install -y libspdlog-dev python3-packaging python3-dev python3-netifaces
+```
+
+**3. Install missing Python module**
+
+```bash
+pip install lark --break-system-packages
+```
+
+This is required for `ros2 launch` to work.
+
+**4. Source the setup file**
+
+```bash
+source ~/ros2_humble/install/setup.bash
+```
+
+Add to `~/.bashrc` to make it permanent.
+
+**5. Verify**
+
+```bash
+ros2 launch --help
+```
 
 ## Notes
 
