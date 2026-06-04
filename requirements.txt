@@ -1,0 +1,5 @@
+opencv-python
+pyserial
+pynmea2
+python-periphery
+pyvesc
