@@ -3,7 +3,7 @@
 <package format="3">
   <name>robot_sensors</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Publish sensor data</description>
   <maintainer email="181676543+SteffEng-lab@users.noreply.github.com">radxa</maintainer>
   <license>Apache-2.0</license>
 
@@ -11,6 +11,9 @@
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
+
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
 
   <export>
     <build_type>ament_python</build_type>

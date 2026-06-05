@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='radxa',
     maintainer_email='181676543+SteffEng-lab@users.noreply.github.com',
-    description='TODO: Package description',
+    description='Publish sensor data',
     license='Apache-2.0',
     extras_require={
         'test': [
@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'imu_publisher_node = robot_sensors.imu_publisher:main'
         ],
     },
 )
