@@ -1,1 +1,5 @@
 02_Tests/.venv/*
+
+03_ROS2_WS/build/
+03_ROS2_WS/install/
+03_ROS2_WS/log/
