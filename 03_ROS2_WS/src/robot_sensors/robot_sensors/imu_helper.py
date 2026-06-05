@@ -87,6 +87,10 @@ def read_gyro_data(i2c_address, gyro_scale):
 
     return [gyro_x, gyro_y, gyro_z]
 
+# Close I2C
+def close_i2c():
+    i2c.close()
+
 def init_imu(i2c_addr, acc_scale, gyro_scale):
     # Turn MPU on from Sleep Mode
     i2c.transfer(i2c_addr, [I2C.Message([mpu_cmds["PWR_MGMT_1"], 0x00])])       # Write 0x00 into register

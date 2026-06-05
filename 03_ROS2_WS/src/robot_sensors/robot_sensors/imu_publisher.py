@@ -4,7 +4,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Imu
 
 import math
-from robot_sensors.imu_helper import read_acc_data, read_gyro_data, read_temp_data, init_imu
+from robot_sensors.imu_helper import read_acc_data, read_gyro_data, read_temp_data, init_imu, close_i2c
 from robot_sensors.settings import I2C_ADDR, ACC_SCALE, GYRO_SCALE, GRAVITY_CONSTANT
 
 
@@ -59,7 +59,8 @@ def main(args=None):
 
     try:
         rclpy.spin(imu_publisher)
-    except KeyboardInterrupt:
+    except:
+        close_i2c()
         imu_publisher.get_logger().info("Shutting IMU publisher down")
         imu_publisher.destroy_node()
         # rclpy.shutdown()
