@@ -60,29 +60,36 @@ def conv_to_two_compl(byte_H, byte_L):
         return raw_val - 2*0x8000 
     return raw_val
 
+# Read given number of bytes starting at given register address
+def read_register(i2c_address, reg_address, num_bytes):
+    msgs = [I2C.Message([reg_address]), I2C.Message(bytearray(num_bytes), read=True)]    # Second msg to read answer
+    i2c.transfer(i2c_address, msgs)
+    return msgs
+
+# Write one byte into given register address
+def write_byte_register(i2c_address, reg_address, value):
+    i2c.transfer(i2c_address, [I2C.Message([reg_address, value])])       # Write one byte into given register
+
 
 # Turn MPU on from Sleep Mode
 i2c.transfer(I2C_ADDR, [I2C.Message([mpu_cmds["PWR_MGMT_1"], 0x00])])       # Write 0x00 into register
 time.sleep(0.2)      # Wait for turn on
 
 # Read
-msgs = [I2C.Message([mpu_cmds["PWR_MGMT_1"]]), I2C.Message(bytearray(1), read=True)]    # Second msg to read answer
-i2c.transfer(I2C_ADDR, msgs)
+msgs = read_register(I2C_ADDR, mpu_cmds["PWR_MGMT_1"], 1)
 print(f"PWR_MGMT_1: {hex(msgs[1].data[0])}")
 
-msgs = [I2C.Message([mpu_cmds["WHO_AM_I"]]), I2C.Message(bytearray(1), read=True)]
-i2c.transfer(I2C_ADDR, msgs)
+msgs = read_register(I2C_ADDR, mpu_cmds["WHO_AM_I"], 1)
 print(f"WHO_AM_I: {hex(msgs[1].data[0])}")
 
 #== Set accelerometer scale ==#
 # Write
 acc_reg_val = mpu_acc_msg[acc_scale] << 3
-i2c.transfer(I2C_ADDR, [I2C.Message([mpu_cmds["ACCEL_CONFIG"], acc_reg_val])])       # Write acc_reg_val into register
+write_byte_register(I2C_ADDR, mpu_cmds["ACCEL_CONFIG"], acc_reg_val)     # Write acc_reg_val into register
 time.sleep(0.2)      # Wait
 
 # Read: Confirm accelerometer scale
-msgs = [I2C.Message([mpu_cmds["ACCEL_CONFIG"]]), I2C.Message(bytearray(1), read=True)]    # Second msg to read answer
-i2c.transfer(I2C_ADDR, msgs)
+msgs = read_register(I2C_ADDR, mpu_cmds["ACCEL_CONFIG"], 1)
 res = msgs[1].data[0]
 if res == acc_reg_val:
     print("Set acc scale successful!")
@@ -91,12 +98,11 @@ time.sleep(0.2)      # Wait
 #== Set gyro scale ==#
 # Write
 gyr_reg_val = mpu_gyro_msg[gyro_scale] << 3
-i2c.transfer(I2C_ADDR, [I2C.Message([mpu_cmds["GYRO_CONFIG"], gyr_reg_val])])       # Write gyr_reg_val into register
+write_byte_register(I2C_ADDR, mpu_cmds["GYRO_CONFIG"], gyr_reg_val)     # Write gyr_reg_val into register
 time.sleep(0.2)      # Wait
 
 # Read: Confirm gyro scale
-msgs = [I2C.Message([mpu_cmds["GYRO_CONFIG"]]), I2C.Message(bytearray(1), read=True)]    # Second msg to read answer
-i2c.transfer(I2C_ADDR, msgs)
+msgs = read_register(I2C_ADDR, mpu_cmds["GYRO_CONFIG"], 1)
 res = msgs[1].data[0]
 if res == gyr_reg_val:
     print("Set gyro scale successful!")
@@ -106,35 +112,21 @@ time.sleep(0.2)      # Wait
 time.sleep(3)
 
 while True:
-    msgs = [I2C.Message([mpu_cmds["TEMP_H"]]), I2C.Message(bytearray(2), read=True)]    # Only give TEMP_H, reads following second byte automatically from following register
-    i2c.transfer(I2C_ADDR, msgs)
+    #== Read temperature values ==#
+    msgs = read_register(I2C_ADDR, mpu_cmds["TEMP_H"], 2)
     temp_val = conv_to_two_compl(msgs[1].data[0], msgs[1].data[1]) / 340 + 36.53        # data[0] = High-Byte, data[1] = Low-Byte ; msgs[0] is writeMsg, msgs[1] is readMsg
 
-    #== Read acceleration values ==#
-    msgs = [I2C.Message([mpu_cmds["ACCEL_XOUT_H"]]), I2C.Message(bytearray(2), read=True)]    # Only give ACCEL_XOUT_H, reads following second byte automatically from following register
-    i2c.transfer(I2C_ADDR, msgs)
+    #== Read acceleration values in one burst ==#
+    msgs = read_register(I2C_ADDR, mpu_cmds["ACCEL_XOUT_H"], 6)   # # Only give ACCEL_XOUT_H, reads following six byte automatically from following registers (registers all next to each other)
     acc_x = conv_to_two_compl(msgs[1].data[0], msgs[1].data[1]) / mpu_acc_conv[acc_scale]
+    acc_y = conv_to_two_compl(msgs[1].data[2], msgs[1].data[3]) / mpu_acc_conv[acc_scale]
+    acc_z = conv_to_two_compl(msgs[1].data[4], msgs[1].data[5]) / mpu_acc_conv[acc_scale]
 
-    msgs = [I2C.Message([mpu_cmds["ACCEL_YOUT_H"]]), I2C.Message(bytearray(2), read=True)]    # Only give ACCEL_YOUT_H, reads following second byte automatically from following register
-    i2c.transfer(I2C_ADDR, msgs)
-    acc_y = conv_to_two_compl(msgs[1].data[0], msgs[1].data[1]) / mpu_acc_conv[acc_scale]
-    
-    msgs = [I2C.Message([mpu_cmds["ACCEL_ZOUT_H"]]), I2C.Message(bytearray(2), read=True)]    # Only give ACCEL_ZOUT_H, reads following second byte automatically from following register
-    i2c.transfer(I2C_ADDR, msgs)
-    acc_z = conv_to_two_compl(msgs[1].data[0], msgs[1].data[1]) / mpu_acc_conv[acc_scale]
-
-    #== Read gyroscope values ==#
-    msgs = [I2C.Message([mpu_cmds["GYRO_XOUT_H"]]), I2C.Message(bytearray(2), read=True)]    # Only give GYRO_XOUT_H, reads following second byte automatically from following register
-    i2c.transfer(I2C_ADDR, msgs)
+    #== Read gyroscope values in one burst ==#
+    msgs = read_register(I2C_ADDR, mpu_cmds["GYRO_XOUT_H"], 6)    # Only give GYRO_XOUT_H, reads following six byte automatically from following registers (registers all next to each other)
     gyro_x = conv_to_two_compl(msgs[1].data[0], msgs[1].data[1]) / mpu_gyro_conv[gyro_scale]
-
-    msgs = [I2C.Message([mpu_cmds["GYRO_YOUT_H"]]), I2C.Message(bytearray(2), read=True)]    # Only give GYRO_YOUT_H, reads following second byte automatically from following register
-    i2c.transfer(I2C_ADDR, msgs)
-    gyro_y = conv_to_two_compl(msgs[1].data[0], msgs[1].data[1]) / mpu_gyro_conv[gyro_scale]
-
-    msgs = [I2C.Message([mpu_cmds["GYRO_ZOUT_H"]]), I2C.Message(bytearray(2), read=True)]    # Only give GYRO_ZOUT_H, reads following second byte automatically from following register
-    i2c.transfer(I2C_ADDR, msgs)
-    gyro_z = conv_to_two_compl(msgs[1].data[0], msgs[1].data[1]) / mpu_gyro_conv[gyro_scale]
+    gyro_y = conv_to_two_compl(msgs[1].data[2], msgs[1].data[3]) / mpu_gyro_conv[gyro_scale]
+    gyro_z = conv_to_two_compl(msgs[1].data[4], msgs[1].data[5]) / mpu_gyro_conv[gyro_scale]
 
     acc_abs = math.sqrt(acc_x**2 + acc_y**2 + acc_z**2)
     print(f"Acc_X: {acc_x:.3f} \t Acc_Y: {acc_y:.3f} \t Acc_Z: {acc_z:.3f} \t Acc_abs: {acc_abs:.3f} \t Gyro_X: {gyro_x:.3f} \t Gyro_Y: {gyro_y:.3f} \t Gyro_Z: {gyro_z:.3f} \t Temp: {temp_val:.3f}")
