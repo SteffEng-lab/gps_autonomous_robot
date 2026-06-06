@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'imu_publisher_node = robot_sensors.imu_publisher:main'
+            'imu_publisher_node = robot_sensors.imu_publisher:main',
+            'gps_publisher_node = robot_sensors.gps_publisher:main'
         ],
     },
 )
