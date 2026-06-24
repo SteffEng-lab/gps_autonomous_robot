@@ -25,7 +25,7 @@ class Sensor_Fusion(Node):
         sys_H = np.array([[1, 0, 0, 0], [0, 1, 0, 0]])
         
         cov_R = np.array([[1.255**2, 0], [0, 1.599**2]])       # Values from noise analysis
-        cov_Q_process = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        cov_Q_process = np.diag([0, 0, 0.5**2, 0.5**2])        # Velocity process noise [m/s per step]
         cov_Q_imu = np.array([[0.02087**2, 0], [0, 0.02382**2]])
         cov_Q = cov_Q_process + sys_B @ cov_Q_imu @ sys_B.T
 
@@ -35,6 +35,17 @@ class Sensor_Fusion(Node):
         self.lat_0 = None
         self.long_0 = None
 
+        self.is_imu_calibrated = False
+        self.imu_calibration_counter = 0
+        self.IMU_CALIBRATION_MAX_STEPS = 500
+        self.imu_acc_sum = np.zeros(2)
+        self.imu_bias = np.zeros(2)
+
+        self.gps_average_counter = 0
+        self.GPS_AVERAGE_MAX_STEPS = 10
+        self.gps_average_readings = np.zeros((self.GPS_AVERAGE_MAX_STEPS, 2))
+    
+
     def gps_callback(self, msg):
         self.get_logger().info("GPS data received")
 
@@ -42,14 +53,27 @@ class Sensor_Fusion(Node):
             lat = msg.latitude
             long = msg.longitude
 
-            if self.lat_0 is None or self.long_0 is None:       # Set initial position if not set yet
-                self.set_initial_pos(lat, long)
+            if self.lat_0 is None:
+                # Collect readings to average initial position
+                if self.gps_average_counter < self.GPS_AVERAGE_MAX_STEPS:
+                    self.gps_average_readings[self.gps_average_counter] = [lat, long]
+                    self.gps_average_counter += 1
+                    return
+                else:
+                    avg_lat  = np.mean(self.gps_average_readings[:, 0])
+                    avg_long = np.mean(self.gps_average_readings[:, 1])
+                    self.set_initial_pos(avg_lat, avg_long)
+                    self.kalman_filter.est_state     = np.zeros((4, 1))
+                    self.kalman_filter.est_error_cov = np.eye(4) * 100
+                    self.get_logger().info(f"Initial position set: lat={avg_lat:.6f}, long={avg_long:.6f}")
+                    return
 
             dx, dy = self.latlong_to_pos(lat, long, self.lat_0, self.long_0)
 
             # Run correction step
             self.kalman_filter.current_z = np.array([[dx], [dy]])
             self.kalman_filter.correct()
+            self.get_logger().info(f"GPS corrected: x={self.kalman_filter.est_state[0,0]:.3f} y={self.kalman_filter.est_state[1,0]:.3f} vx={self.kalman_filter.est_state[2,0]:.4f} vy={self.kalman_filter.est_state[3,0]:.4f}")
         else:
             self.get_logger().info("No GPS fix available")
 
@@ -58,8 +82,22 @@ class Sensor_Fusion(Node):
         acc_x = msg.linear_acceleration.x
         acc_y = msg.linear_acceleration.y
 
-        # Run prediction step
-        self.kalman_filter.current_u = np.array([[acc_x], [acc_y]])
+        # Check if IMU has been calibrated already or not
+        if not self.is_imu_calibrated:
+            if self.imu_calibration_counter >= self.IMU_CALIBRATION_MAX_STEPS:
+                self.imu_bias = self.imu_acc_sum / self.IMU_CALIBRATION_MAX_STEPS
+                self.is_imu_calibrated = True
+                self.get_logger().info(f"IMU calibrated. Bias: ax={self.imu_bias[0]:.5f}, ay={self.imu_bias[1]:.5f}")
+            else:
+                self.imu_acc_sum += np.array([acc_x, acc_y])
+                self.imu_calibration_counter += 1
+                return
+
+        # Run prediction step (only after first GPS fix has initialized est_state)
+        if self.kalman_filter.est_state is None:
+            return
+
+        self.kalman_filter.current_u = np.array([[acc_x - self.imu_bias[0]], [acc_y - self.imu_bias[1]]])
         self.kalman_filter.predict()
 
         # Publish prediction
